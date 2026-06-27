@@ -1,0 +1,1348 @@
+// ═══════════════════════════════════════════════════
+// UNRAVEL v3 — Configuration
+// Providers, Bug Taxonomy, System Prompts
+// ═══════════════════════════════════════════════════
+
+// --- API Provider Configuration ---
+export const PROVIDERS = {
+    anthropic: {
+        name: 'Claude (Anthropic)',
+        models: {
+            opus: { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', tier: 'SOTA' },
+            sonnet: { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', tier: 'SOTA' },
+            haiku: { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', tier: 'Fast' },
+        },
+        defaultModel: 'sonnet',
+        endpoint: 'https://api.anthropic.com/v1/messages',
+        headers: (key) => ({
+            'Content-Type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+        }),
+        // Claude 4.6 uses adaptive thinking with effort levels (low/medium/high/max)
+        // budget_tokens is deprecated — effort replaces it
+        buildBody: (model, systemPrompt, userPrompt) => ({
+            model: model,
+            max_tokens: 16000,
+            thinking: { type: 'enabled', effort: 'high' },
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+        }),
+        parseResponse: (data) => {
+            // Claude returns content array — find the text block (not thinking block)
+            const textBlocks = (data.content || []).filter(b => b.type === 'text');
+            return textBlocks.map(b => b.text).join('');
+        },
+    },
+
+    google: {
+        name: 'Gemini (Google)',
+        models: {
+            flash25: { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', tier: 'Fast' },
+            flash3: { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', tier: 'Fast' },
+            pro31: { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview', tier: 'SOTA' },
+        },
+        defaultModel: 'pro31',
+        endpoint: (key, model) =>
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        headers: () => ({ 'Content-Type': 'application/json' }),
+        buildBody: (model, systemPrompt, userPrompt) => {
+            // Gemini 2.5 uses thinkingBudget (number, max 24576 for Flash)
+            // Gemini 3+ uses thinkingLevel (string: minimal/low/medium/high)
+            const isGemini3 = model.includes('gemini-3');
+            const thinkingConfig = isGemini3
+                ? { thinkingLevel: 'high' }
+                : { thinkingBudget: 24576 };
+            return {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    maxOutputTokens: isGemini3 ? 65536 : 32000,
+                    thinkingConfig,
+                },
+            };
+        },
+        parseResponse: (data) => {
+            return data.candidates?.[0]?.content?.parts?.filter(p => p.text)?.map(p => p.text).join('') || '';
+        },
+    },
+
+    openai: {
+        name: 'OpenAI',
+        models: {
+            gpt53: { id: 'gpt-5.3-instant', label: 'GPT 5.3 Instant', tier: 'SOTA' },
+        },
+        defaultModel: 'gpt53',
+        endpoint: 'https://api.openai.com/v1/chat/completions',
+        headers: (key) => ({
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${key}`,
+        }),
+        buildBody: (model, systemPrompt, userPrompt) => ({
+            model: model,
+            max_completion_tokens: 16000,
+            reasoning: { effort: 'high' },
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt },
+            ],
+        }),
+        parseResponse: (data) => {
+            return data.choices?.[0]?.message?.content || '';
+        },
+    },
+};
+
+// --- Bug Taxonomy ---
+export const BUG_TAXONOMY = {
+    STATE_MUTATION: { label: 'State Mutation', color: '#ff003c', desc: 'Variable meant to be constant is modified unexpectedly' },
+    STALE_CLOSURE: { label: 'Stale Closure', color: '#ff6b6b', desc: 'Function captures outdated variable value' },
+    RACE_CONDITION: { label: 'Race Condition', color: '#e040fb', desc: 'Multiple async operations conflict on shared state' },
+    TEMPORAL_LOGIC: { label: 'Temporal Logic', color: '#ffaa00', desc: 'Timing assumptions break (drift, wrong timestamps)' },
+    EVENT_LIFECYCLE: { label: 'Event Lifecycle', color: '#ff9100', desc: 'Missing cleanup, double-binds, or wrong event order' },
+    TYPE_COERCION: { label: 'Type Coercion', color: '#7c4dff', desc: 'Implicit type conversion causes unexpected behavior' },
+    ENV_DEPENDENCY: { label: 'Env Dependency', color: '#00e5ff', desc: 'Code behaves differently across environments' },
+    ASYNC_ORDERING: { label: 'Async Ordering', color: '#00bfa5', desc: 'Operations execute in wrong sequence' },
+    DATA_FLOW: { label: 'Data Flow', color: '#448aff', desc: 'Data passes incorrectly between components/files' },
+    UI_LOGIC: { label: 'UI Logic', color: '#69f0ae', desc: "Visual behavior doesn't match intent" },
+    MEMORY_LEAK: { label: 'Memory Leak', color: '#ff5252', desc: 'Resources not released, accumulate over time' },
+    INFINITE_LOOP: { label: 'Infinite Loop', color: '#ff1744', desc: 'Recursive or cyclic behavior creates runaway effect' },
+    OTHER: { label: 'Other', color: '#888', desc: 'Uncategorized bug type' },
+};
+
+// --- User Levels ---
+export const LEVELS = {
+    beginner: { label: 'Zero Code', icon: 'Baby', desc: 'Never written code' },
+    vibe: { label: 'Vibe Coder', icon: 'Palette', desc: 'AI builds it, I direct it' },
+    basic: { label: 'Some Basics', icon: 'Book', desc: 'Know HTML/CSS, lost in logic' },
+    intermediate: { label: 'Developer', icon: 'Code', desc: 'Can code, confused by this bug' },
+};
+
+// --- Output Languages ---
+export const LANGUAGES = {
+    hinglish: { label: 'Hinglish', icon: 'MessageSquare', desc: 'Hindi + English mix' },
+    hindi: { label: 'Hindi', icon: 'Languages', desc: 'Pure Hindi explanation' },
+    english: { label: 'English', icon: 'Globe2', desc: 'Simple English' },
+};
+
+// --- Language Prompts ---
+// FIX: English is a neutral professional baseline — simplification comes from the level instructions only.
+// Indian analogies are gated to hinglish/hindi — do NOT fire them for English users.
+const LANG_INSTRUCTIONS = {
+    hinglish: "CRITICAL: Reply ONLY in natural Hinglish (Hindi+English mix) like Indian friends talk. Technical terms in English, explained in Hindi. Use real Indian daily-life analogies (ghar, sabzi, auto-rickshaw, chai, cricket) to explain concepts. E.g. 'Yaar, yeh variable basically tera timer ka total time store karta hai.'",
+    hindi: "CRITICAL: Reply ONLY in simple, clear Hindi. Translate all technical terms into Hindi equivalents. Use Devanagari-friendly language. Use Indian daily-life analogies to explain concepts.",
+    english: "Reply in clear, professional English. Match technical depth to the user level below. Do NOT use Indian-specific analogies — use universally understood examples instead.",
+};
+
+// --- Level Prompts ---
+// CRITICAL: Level controls EXPLANATION LANGUAGE AND ANALOGY COMPLEXITY only.
+// Diagnostic precision — evidence[], rootCause, hypothesisTree, codeLocation, diffBlock —
+// must ALWAYS be at full technical accuracy regardless of level.
+// Do expert-level tracing first, then translate the explanation for the user.
+// Never omit line numbers, mutation chains, or file citations because the user is a beginner.
+const LEVEL_INSTRUCTIONS = {
+    beginner: "The user has ZERO coding knowledge. They used AI to build something and don't understand any code. Give the FULL correct fix — do not omit any part of it. Then explain each change in plain language without jargon, using simple analogies from daily life.",
+    vibe: "The user is a vibe coder — they use Cursor/Bolt/Lovable to build apps. They know what an app should DO, not HOW the code works. Give the COMPLETE fix with every change needed. Explain using file names and plain English — not code theory.",
+    basic: "The user knows basic HTML/CSS and can read simple code. They struggle with JavaScript logic, state management, and async behavior. Give the FULL, COMPLETE fix. Explain the 'why' using simple analogies before showing the code.",
+    intermediate: "The user is a developer who can write code but is confused about THIS specific bug. Give full technical details, the complete fix with line citations, and explain the 'why' clearly. Do not simplify or abbreviate.",
+};
+
+// ═══════════════════════════════════════════════════
+// PHASE 4A: Reasoning Protocol & Mode System
+// ═══════════════════════════════════════════════════
+
+// --- Shared Understanding Phase (Phase 1-4) ---
+// Wide prompts: no mention of async, closures, state. Model discovers what's relevant.
+function buildSharedPhases() {
+    return [
+        {
+            n: 1, name: 'READ',
+            desc: `Read every provided file completely before forming any opinion.
+Do not diagnose, explain, or audit until a complete mental model of the codebase has been built.
+If you find yourself forming a conclusion before finishing — stop. Keep reading. The early conclusion is probably wrong.
+If necessary, reread sections to verify understanding before proceeding.
+
+⚠️ BUGGY CODE CONTEXT: The code you are analyzing contains at least one bug.
+This means the bug may look syntactically correct — it does exactly what it says, but what it says is wrong.
+Do NOT assume developer intent matches code behavior. Verify behavior from execution, not from naming conventions or appearance.`
+        },
+        {
+            n: 2, name: 'UNDERSTAND INTENT',
+            desc: `For each component, function, and module: what is this trying to accomplish?
+What problem does it solve? What does correct behavior look like from the perspective of whoever wrote it?
+Do not assume anything about implementation — derive intent from the code structure and naming.
+
+If cross-file symbols are present (exported variables, imported functions):
+  - Trace each exported symbol's full lifecycle across ALL provided files
+  - Check: mutated in one file, read in another? The root cause may be in File A even if the failure appears in File B.
+  - Never confine state analysis to a single file when cross-file symbols are visible in the AST context.`
+        },
+        {
+            n: 3, name: 'UNDERSTAND REALITY',
+            desc: `What is the code actually doing?
+Where does actual behavior diverge from intended behavior — even slightly?
+Trace data as it moves. Follow execution paths.
+Generate exactly 3 competing hypotheses for any divergence you find.
+They MUST be mutually exclusive — if Hypothesis A is correct, B and C must be demonstrably wrong.
+Do NOT generate 3 variations of the same root mechanism.
+Do not commit to any single explanation yet.
+Prefer explanations supported by evidence from multiple locations in the code.
+Reject explanations contradicted by any line of code, regardless of how plausible they seem.
+For variables with 5 or more combined reads and writes, populate variableStateEdges with their full mutation flow as directed edges.
+
+FALSIFIABILITY — For each hypothesis, also state what would disprove it: what code evidence, if found, would make this hypothesis impossible? Store these as falsifiableIf[] per hypothesis entry. The more specific the condition, the stronger Phase 5 elimination becomes.`
+        },
+        {
+            n: 4, name: 'BUILD CONTEXT',
+            desc: `What does each part depend on? What does each part affect?
+How do the pieces connect? Where are the boundaries between components?
+Use the verified AST facts provided — they are ground truth. Do not contradict them.
+
+EVIDENCE TRIPLE — For each hypothesis, produce an evidenceMap entry with three lists:
+  supporting[]: code evidence (file + line) that makes this hypothesis more likely
+  contradicting[]: code evidence that argues against this hypothesis
+  missing[]: files or runtime data that WOULD resolve this hypothesis but are absent from the provided context
+Set verdict for each hypothesis:
+  SUPPORTED    — has supporting evidence, no contradicting, missing is acceptable
+  CONTESTED    — has both supporting and contradicting evidence
+  UNVERIFIABLE — missing[] is non-empty and those files are required to decide between hypotheses
+  SPECULATIVE  — no supporting evidence found, not contradicted, surviving by default only
+Output the full map in evidenceMap[].`
+        },
+        {
+            n: 3.5, name: 'HYPOTHESIS EXPANSION',
+            desc: `Given the dependency map from Phase 4, review your Phase 3 hypotheses.
+Does the context reveal cross-file mechanisms or dependency relationships not visible before?
+If yes, add at most 2 new hypotheses — mutually exclusive with the original three.
+For each new hypothesis, also state its falsifiableIf conditions.
+If no new hypotheses are warranted, proceed to Phase 5 immediately.
+The hypothesis space closes here.`
+        },
+    ];
+}
+
+// --- Debug Mode Prompt (Phase 5-9 appended to shared) ---
+export function buildDebugPrompt(level, language, provider = 'anthropic') {
+    const levelInst = LEVEL_INSTRUCTIONS[level] || LEVEL_INSTRUCTIONS.vibe;
+    const langInst = LANG_INSTRUCTIONS[language] || LANG_INSTRUCTIONS.english;
+
+    const role = 'You are UNRAVEL — a deterministic AI debugging engine. You do NOT guess bugs. You reason systematically through a structured pipeline.';
+
+    const sharedPhases = buildSharedPhases();
+
+    const debugPhases = [
+        {
+            n: 5, name: 'DIAGNOSE',
+            desc: `The user has reported a symptom. Their description is a symptom report — NOT a diagnosis.
+Do not assume the user is correct about the location or nature of the bug.
+Use their symptom as a starting clue only. Verify everything against the code.
+Given your complete understanding of this code, trace where that symptom originates.
+Test each hypothesis from Phase 3 against AST evidence. Kill the ones the evidence contradicts.
+The surviving hypothesis is the root cause. If multiple survive, report all of them.
+Populate hypothesisTree with each hypothesis, its status (survived/eliminated), and the exact code evidence that determined its fate.
+
+HYPOTHESIS ELIMINATION SCORING — For every hypothesis in hypothesisTree:
+  - If eliminated: the 'reason' field MUST quote the specific AST-verified code fragment (file + line) that eliminates it.
+    Example: "AST confirms scheduleUpdate() is called at all 4 mutation sites (L42, L67, L89, L103) — missing emit is impossible."
+  - If survived: the 'reason' field MUST cite the exact code path that supports it.
+  - Populate 'eliminatedBy' with the short code evidence string: e.g. "app.js L42: scheduleUpdate() called after write".
+  - A hypothesis without a line citation in its reason is UNVERIFIED REASONING and must not be trusted.
+
+FALSIFIABILITY CHECK — Before accepting any elimination, verify each hypothesis's falsifiableIf conditions against AST evidence. If a falsifiableIf condition IS met in the code → the hypothesis is eliminated by its own falsifiability test. Cite which condition was met and the code fragment that proves it.
+
+CAUSAL CHAIN — For the surviving hypothesis, produce causalChain[]: an ordered list showing:
+  1. The specific mutation or incorrect state (file + line)
+  2. How it propagates — which function reads it, how the value flows downstream
+  3. The exact symptom it produces — must match what the user reported
+Each step must be supported by code evidence. If any link cannot be traced from the provided files, set causalCompleteness: false.`
+        },
+        {
+            n: 5.5, name: 'ADVERSARIAL CONFIRMATION',
+            desc: `PRE-CHECK BEFORE ADVERSARIAL REASONING (do this first, before anything else):
+Scan the VERIFIED GROUND TRUTH block at the top of your context for any annotations marked with ⛔ or containing the phrase "NOT the root cause" or "CANNOT cause".
+List each one explicitly. These are off-limits for adversarial disproof.
+Do NOT construct arguments against them using browser behavior, environment speculation, edge-case reasoning, or absence of a falsifying test.
+Your adversarial attempt MUST operate only on LLM-inferred claims — never on AST-verified spec facts.
+If a surviving hypothesis was supported only by evidence that an ⛔ annotation has already negated, eliminate that hypothesis immediately. Do not retry to support it.
+
+---
+
+For each remaining surviving hypothesis (not already eliminated by the pre-check above): actively try to disprove it.
+Check every falsifiableIf condition — does code evidence meet any of them?
+If decisive contradiction found: eliminate the hypothesis. Re-enter Phase 3.5 if iteration count is below 2.
+If the hypothesis survives the attack: record the attempt and its failure in adversarialCheck.
+MULTIPLE SURVIVORS: If 2 or more hypotheses genuinely survive — do NOT force one winner.
+Set multipleHypothesesSurvived: true and report all survivors ranked by eliminationQuality.
+Honest uncertainty is better than false certainty.`
+        },
+        {
+            n: 6, name: 'MINIMAL FIX',
+            desc: `What is the smallest possible code change that fixes the bug?
+Default: show targeted surgical fixes only. Do NOT rewrite the entire program.
+Explain exactly why this fix works at the root cause level.
+
+ARCHITECTURAL EXCEPTION — applies in any of these three cases:
+
+Case A — Surgical patch hides the symptom but leaves root cause intact:
+  The patch suppresses the visible error without eliminating the underlying incorrect state.
+  Example: adding a null-check around a crash site when the real bug is that null should never reach there.
+
+Case B — Surgical patch is correct but produces a worse pattern or maintenance debt:
+  The patch technically works but violates framework best practices, creates unnecessary complexity,
+  or sets a pattern that will cause related bugs in future.
+  Example: adding deps to a useCallback when the callback should be inlined into useEffect entirely —
+  the dep-list fix works but the hook design is structurally wrong.
+  Example: adding a lock/guard around shared state when the real fix is to eliminate shared ownership.
+
+Case C — Fundamental design flaw spans multiple locations:
+  The bug exists because of wrong ownership of data, shared mutable state across async boundaries,
+  or a missing abstraction layer that will cause the same class of bug to recur elsewhere.
+  RACE_CONDITION bugs involving shared async state frequently qualify for this case.
+
+When any case applies:
+  1. Still provide the surgical patch (for immediate deployment)
+  2. Add a clearly-labeled "ARCHITECTURAL NOTE" section in minimalFix that contains:
+     - A plain-language explanation of what structural property is violated
+     - The correct design described concisely but completely
+     - The FULL better fix code, ready to implement — not a vague description
+     - Which files would need to change
+     The developer must be able to implement the better fix from what you write, without doing additional research.
+Do NOT add an architectural note for single-location bugs, typos, missing null checks, or
+off-by-one errors — only for cases where the same area will need repeated patches over time.
+
+DIFF OUTPUT — Also populate the 'diffBlock' field with the fix as a unified diff:
+  - Lines starting with - are the old code (to remove)
+  - Lines starting with + are the new code (to add)
+  - Include a file:line header for each changed location
+  - Keep to under 20 lines total
+  Example:
+    --- app.js L69
+    -    duration = remaining
+    +    lastActiveRemaining = remaining
+
+Populate timelineEdges with the same timeline as directed edges between actors. Mark the exact edge where the bug manifests with isBugPoint: true.`
+        },
+        {
+            n: 7, name: 'CONCEPT EXTRACTION',
+            desc: `What programming concept does this bug teach?
+How should the user avoid this entire class of bug forever?
+Give a real-world analogy appropriate for the user's language setting (see language instruction above).
+For hinglish/hindi users: use Indian daily-life analogies (auto-rickshaw, sabzi, chai, ghar).
+For english users: use universally understood analogies.
+`
+        },
+        {
+            n: 7.5, name: 'PATTERN PROPAGATION CHECK',
+            desc: `You have identified the bug concept above. Now scan the provided files for other instances of the same structural pattern.
+Not other bugs — other locations where the same mechanism could recur.
+Examples: if this bug was Set.forEach mutation, check all other forEach loops. If this was a strict > off-by-one in a predicate, check other comparison predicates.
+Populate relatedRisks[] with file, line, and why it matches. Label each POTENTIAL RISK — not a confirmed bug.
+If no matching patterns found, leave relatedRisks empty. Do not fabricate risks.`
+        },
+        {
+            n: 8, name: 'INVARIANTS',
+            desc: `What conditions MUST always be true for this program to work correctly?
+Document them as rules for future prevention.`
+        },
+        {
+            n: 8.5, name: 'FIX-INVARIANT CONSISTENCY CHECK',
+            desc: `Review the invariants you stated in Phase 8. For each invariant: does the Phase 6 fix satisfy it?
+If any invariant is violated — add it to fixInvariantViolations[] and revise minimalFix to address it.
+LOOP POLICY: Phase 6 may be revised once from this phase. If the revised fix still violates an invariant, surface the conflict in fixInvariantViolations[] — do not loop again. The fix is not accepted until all invariants pass or the violation is explicitly surfaced.`
+        },
+    ];
+
+    const allPhases = [...sharedPhases, ...debugPhases];
+
+    const rules = [
+        'NEVER make up code behavior you cannot verify from the provided files.',
+        'If the code appears correct and the described bug cannot be reproduced from the code logic, say so clearly. Do NOT invent bugs to appear useful.',
+        'If the user\'s bug description contradicts actual code behavior, point out the contradiction instead of agreeing with a false premise.',
+        'Every bug claim MUST include the exact line number and code fragment that proves it. If you cannot cite evidence, do NOT claim the bug.',
+        'Generate exactly 3 competing hypotheses before committing to a root cause. They must be MUTUALLY EXCLUSIVE mechanisms, not variations of the same idea.',
+        'If multiple hypotheses survive evidence elimination, report all survivors with evidence for each. Do NOT pick one arbitrarily.',
+        'The user\'s description is a symptom report, not a diagnosis. Do not treat their assumption about the bug\'s location or cause as fact.',
+        'If critical files are missing, set needsMoreInfo to true and specify exactly what you need.',
+        'Analogies: for hinglish/hindi users, use Indian daily-life examples (ghar, sabzi, auto-rickshaw, chai, cricket). For english users, use universally understood analogies — do not assume an Indian cultural context.',
+        'Be warm like a senior developer friend, not cold like documentation.',
+        'CONFIDENCE CALIBRATION — This is static analysis, not runtime execution. Code evidence IS deterministic. If you have traced the exact code path where state is corrupted (line number + mechanism), confidence MUST be 0.85 or above. Do NOT lower confidence to 0.6 merely because you lack runtime logs — if the bug is visible in the code, that IS the evidence. Only drop below 0.75 if: (a) critical files are missing, or (b) two hypotheses genuinely survive elimination with equal evidence.',
+        'UNCERTAINTY FIELD — Only list SPECIFIC unknowns that change the diagnosis: e.g. "Cannot determine which branch of condition at L42 executes first without a debugger trace." Do NOT write generic disclaimers like "Without runtime logs it is hard to confirm" — that applies to every static analysis and adds no information. If you have code-level evidence for the root cause, uncertainties should be empty or contain only specific secondary unknowns.',
+        'Bug type MUST be one of: STATE_MUTATION, STALE_CLOSURE, RACE_CONDITION, TEMPORAL_LOGIC, EVENT_LIFECYCLE, TYPE_COERCION, ENV_DEPENDENCY, ASYNC_ORDERING, DATA_FLOW, UI_LOGIC, MEMORY_LEAK, INFINITE_LOOP, OTHER.',
+        'Rule 6 — PROXIMATE FIXATION GUARD: The crash site is NEVER automatically the root cause. It is where failure became visible. Trace state BACKWARDS through mutation chains from the failure point. The root cause is where state was FIRST corrupted, not where it first caused a visible failure. Exception: single-line bugs where crash site and root cause are demonstrably the same.',
+        'Rule 7 — NAME-BEHAVIOR FALLACY: A variable named `isPaused` does not guarantee the code pauses. A function named `cleanup()` does not guarantee cleanup occurs. Verify BEHAVIOR from the execution chain — do not trust naming conventions as a substitute for tracing the actual code path.',
+        'ELIMINATION QUALITY — When populating hypothesisTree, rate each surviving hypothesis: STRONG if you cited ≥2 distinct AST-verified code fragments as positive evidence; WEAK if only 1 citation or the evidence is inferred; DEFAULT if the hypothesis survived only because alternatives were eliminated with no positive evidence for this one. A DEFAULT survivor must have confidence capped at 0.75.',
+        'AST SPEC ANNOTATION AUTHORITY — The VERIFIED GROUND TRUTH block may contain annotations marked with ⛔ or phrases like "NOT the root cause" or "CANNOT cause". These are deterministic static analysis facts — not interpretations. They CANNOT be overridden by: (a) speculation about browser behavior, (b) "edge case" reasoning, (c) "some environments may differ" arguments, or (d) absence of a falsifying test. If an AST annotation states that X cannot cause Y, then X is eliminated. The adversarialCheck field must record this constraint as the reason for elimination, not attempt to rationalize around it. Treating a hard spec annotation as "speculative" is a protocol violation.',
+    ];
+
+    return _formatPrompt(role, levelInst, langInst, allPhases, rules, provider);
+}
+
+// --- Explain Mode Prompt ---
+export function buildExplainPrompt(level, language, provider = 'anthropic') {
+    const levelInst = LEVEL_INSTRUCTIONS[level] || LEVEL_INSTRUCTIONS.vibe;
+    const langInst = LANG_INSTRUCTIONS[language] || LANG_INSTRUCTIONS.english;
+
+    const role = 'You are UNRAVEL in Explain Mode — a code understanding engine. You do NOT look for bugs. You do NOT look for vulnerabilities. Your only job is to explain what this code does and how it works.';
+
+    const sharedPhases = buildSharedPhases();
+
+    const explainPhase = {
+        n: 5, name: 'ARTICULATE',
+        desc: `You are a senior developer giving a thorough codebase walkthrough to a developer joining tomorrow. Not a documentation generator — a human expert briefing.
+
+SUMMARY: This is the MOST IMPORTANT section. Write a BIG, DETAILED, multi-paragraph explanation. Do NOT be brief. Do NOT be superficial. Cover ALL of the following in plain, everyday language — as if explaining to someone who has never seen this code before:
+
+Paragraph 1 — WHAT IS THIS: What does this project do? What problem does it solve? What does a user actually experience when they use it? Use simple analogies. Make it vivid and concrete.
+
+Paragraph 2 — TECH STACK & STRUCTURE: What languages, frameworks, and tools does this project use? How is the codebase organized — what are the main folders and files, and what role does each play? Explain this like you are giving someone a tour of the project directory.
+
+Paragraph 3 — HOW IT ACTUALLY WORKS: Walk through the internal flow step by step. When a user triggers the main action, what happens first, second, third? Trace the entire pipeline from input to output. If there are phases, stages, or layers, name each one and explain what it does in plain language. Do NOT skip steps — be thorough. This is where you explain the actual mechanics, not just a vague overview.
+
+Paragraph 4 — WHAT MAKES IT INTERESTING: What is architecturally distinctive about this code compared to typical projects? What is the core design insight someone needs to understand before reading any code? What patterns or decisions would surprise an experienced developer?
+
+ENTRY POINTS: The real starting points — where execution begins, where user interaction begins, where the system initializes. File path and exact line number for each. Give a clear one-line description of what each entry point does in simple terms.
+
+DATA FLOW + flowchartEdges: Trace how data actually moves through the system. Start from user input or external trigger, end at output or side effect. Populate flowchartEdges with the same data as directed edges for a Mermaid flowchart.
+
+ARCHITECTURE LAYERS + architectureLayers: Group the codebase into 3-5 high-level semantic layers (e.g. UI, Core Engine, Data, Extensions) so a human can mentally map the system immediately. This is not about imports — it's about semantic boundaries. Provide a name, a quick description, and the list of specific components/files that belong in that layer.
+
+COMPONENT MAP + dependencyEdges: Show which modules depend on which. Only include files that are EXPLICITLY imported in the provided code. Do NOT infer files from function names. If a function is defined in the same file, it is a local function — not a separate dependency. Populate dependencyEdges with explicit import relationships only — short filenames.
+
+KEY PATTERNS: Each pattern must name the specific mechanism, the specific files involved, and the specific lines where it is visible. Bad: "Modular Design". Good: "Core engine (orchestrate.js, ast-engine.js, config.js) shared between web app and VS Code extension via direct relative imports at App.jsx L3 and extension.js L2 — no npm package".
+
+NON-OBVIOUS INSIGHTS: What would genuinely surprise an experienced developer reading this for the first time? Architectural inversions, unusual patterns, implicit coupling, hidden assumptions. Minimum 3, maximum 6. Write each insight as a full sentence that explains both the WHAT and the WHY.
+
+GOTCHAS: Where are the landmines? What breaks silently when changed? What shared state or side effects aren't obvious from function signatures? Each gotcha needs a title, a clear description of what goes wrong and why, and a specific file and line.
+
+ONBOARDING: The 3-5 most common tasks a new developer would need to do. For each: the exact file, the exact line, and the exact existing code to model after. "To add a new provider, open config.js and copy the pattern of the existing google object starting at L38" is useful. "Modify the configuration" is not.
+
+ARCHITECTURE DECISIONS: What major structural choices are visible in the code? Only explain the reasoning if it is actually visible from the code — no speculation. If the reason is visible, explain the tradeoff it creates.
+
+Be concrete. Use line numbers for every claim. No vague summaries.
+Do NOT mention bugs. Do NOT mention vulnerabilities. Do NOT suggest improvements.
+Your only job is accurate, thorough, honest explanation.`
+    };
+
+    const allPhases = [...sharedPhases, explainPhase];
+
+    const rules = [
+        'Do NOT look for bugs, issues, or problems. You are an explainer, not a debugger.',
+        'Every claim must reference a specific file and line number. No general statements without code evidence.',
+        'If you are unsure what something does, say so — do not guess.',
+        'Explain at the level of the user profile below.',
+        'Be concrete. "This function takes X and returns Y" is better than "this function handles data processing".',
+        'Analogies: for hinglish/hindi users, use Indian daily-life analogies (ghar, auto-rickshaw, chai, sabzi, cricket). For english users, use universally understood analogies — do not use Indian-specific cultural references.',
+        'ONLY list files as dependencies if they appear in explicit import/require statements in the provided code. If a function is defined locally in the same file, say so. Never infer the existence of files you have not seen.',
+        'Key patterns must be specific: name the exact files, functions, and mechanism. "Flexible AI Providers" is too vague. "provider.js abstracts Gemini/Claude/OpenAI behind a single callProvider() interface" is correct.',
+    ];
+
+    return _formatPrompt(role, levelInst, langInst, allPhases, rules, provider);
+}
+
+// --- Security Mode Prompt (BETA) ---
+export function buildSecurityPrompt(level, language, provider = 'anthropic') {
+    const levelInst = LEVEL_INSTRUCTIONS[level] || LEVEL_INSTRUCTIONS.vibe;
+    const langInst = LANG_INSTRUCTIONS[language] || LANG_INSTRUCTIONS.english;
+
+    const role = 'You are UNRAVEL in Security Mode (BETA) — a static security auditor. You identify where code makes trust assumptions that a malicious actor could violate.';
+
+    const sharedPhases = buildSharedPhases();
+
+    const securityPhase = {
+        n: 5, name: 'AUDIT',
+        desc: `What does this code trust? What does it assume about its inputs, its callers, and its environment?
+Where could those assumptions be violated by someone acting with malicious intent?
+For each finding, cite the exact code that creates the risk and the exact change that would remove it.
+Rate severity honestly: Critical / High / Medium / Low / Informational.
+Rate exploitability honestly: TRIVIAL (any script kiddie could exploit it), MODERATE (requires a skilled attacker), COMPLEX (requires expert knowledge + specific pre-conditions), THEORETICAL (possible in theory but no practical attack vector found).
+If you are not certain something is a vulnerability, classify it as INFORMATIONAL — not as a vulnerability.
+A confident wrong finding is worse than no finding at all.
+Every finding must have a confidence score. If confidence is below 0.7, it must be INFORMATIONAL regardless of severity rating.
+
+For each vulnerability, also produce attackVectorEdges — a short array of directed edges showing HOW an attacker would exploit it step by step.
+Each edge has: from (attacker action or system component), to (next step), label (short description), isExploitStep (true if this is the critical exploitation moment).
+Keep each attack chain to 3-6 edges. These will be rendered as Mermaid flowcharts.
+
+Also list positives — things the code does RIGHT from a security perspective (input validation, parameterized queries, etc.).
+Set overallRisk to one of: Critical / High / Medium / Low / Secure.`
+    };
+
+    const allPhases = [...sharedPhases, securityPhase];
+
+    const rules = [
+        'This is BETA. Every finding automatically carries requiresHumanVerification: true.',
+        'If you cannot point to specific code evidence for a vulnerability, confidence must be below 0.5 and severity must be INFORMATIONAL.',
+        'Do not flag theoretical issues without code evidence. "This pattern could sometimes be unsafe" is not a finding.',
+        'Every finding must cite exact file and line number. No findings without code evidence.',
+        'Focus on what is detectable from static analysis: injection vulnerabilities (XSS, SQLi, command injection) and hardcoded credentials. Do not speculate about runtime behavior.',
+        'If the code appears safe, say so. Do not invent vulnerabilities to appear useful.',
+    ];
+
+    return _formatPrompt(role, levelInst, langInst, allPhases, rules, provider);
+}
+
+// --- Provider-Specific Formatting (shared by all modes) ---
+function _formatPrompt(role, levelInst, langInst, phases, rules, provider) {
+    const schemaLine = 'Return your analysis as a JSON object matching the exact schema provided.';
+
+    // === CLAUDE: XML tags ===
+    if (provider === 'anthropic') {
+        return `<instructions>
+<role>${role}</role>
+
+<user_profile>
+<level>${levelInst}</level>
+<language>${langInst}</language>
+</user_profile>
+
+<pipeline>
+${phases.map(p => `<phase n="${p.n}" name="${p.name}">${p.desc}</phase>`).join('\n')}
+</pipeline>
+
+<rules>
+${rules.map(r => `<rule>${r}</rule>`).join('\n')}
+</rules>
+
+<output_format>${schemaLine}</output_format>
+</instructions>`;
+    }
+
+    // === GEMINI: Markdown headers ===
+    if (provider === 'google') {
+        return `# Role
+${role}
+
+## User Profile
+**Level:** ${levelInst}
+**Language:** ${langInst}
+
+## Analysis Pipeline (follow EXACTLY)
+${phases.map(p => `**Phase ${p.n} — ${p.name}:** ${p.desc}`).join('\n\n')}
+
+## Rules
+${rules.map(r => `- ${r}`).join('\n')}
+
+## Output
+${schemaLine}`;
+    }
+
+    // === OPENAI: Markdown + delimiters ===
+    if (provider === 'openai') {
+        return `${role}
+
+### USER PROFILE ###
+Level: ${levelInst}
+Language: ${langInst}
+
+### ANALYSIS PIPELINE (follow EXACTLY) ###
+${phases.map(p => `${p.n}. ${p.name}: ${p.desc}`).join('\n')}
+
+### RULES ###
+${rules.map(r => `- ${r}`).join('\n')}
+
+### OUTPUT ###
+${schemaLine}`;
+    }
+
+    // Fallback: plain text
+    return `${role}\n\nUSER PROFILE:\nLevel: ${levelInst}\n\nLANGUAGE:\n${langInst}\n\nPIPELINE:\n${phases.map(p => `PHASE ${p.n} — ${p.name}: ${p.desc}`).join('\n\n')}\n\nRULES:\n${rules.map(r => `- ${r}`).join('\n')}\n\n${schemaLine}`;
+}
+
+// --- Backward Compatibility Alias ---
+export function buildSystemPrompt(level, language, provider) {
+    return buildDebugPrompt(level, language, provider);
+}
+
+// --- Router Agent Prompt (mode-aware) ---
+/**
+ * Deterministic error-type classifier — no LLM cost.
+ * Returns one of: 'PACKAGE_RESOLUTION' | 'BUILD_CONFIG' | 'RUNTIME_TYPE' | 'RUNTIME_LOGIC'
+ *
+ * Currently injected into the Pass 2 router prompt so the LLM knows
+ * which file categories to prioritise and which to skip entirely.
+ * (Pass 1 errorType injection is planned but not yet implemented.)
+ *
+ * @param {string} symptom - The user's reported issue / issue body
+ * @returns {string} errorType
+ */
+export function classifyErrorType(symptom) {
+    if (!symptom) return 'RUNTIME_LOGIC';
+    const s = symptom.toLowerCase();
+
+    // Package / module resolution errors
+    if (
+        s.includes('cannot find package') ||
+        s.includes('module not found') ||
+        s.includes('cannot resolve module') ||
+        s.includes('err_package_path') ||
+        s.includes('err_module_not_found') ||
+        s.includes('cannot find module') ||
+        s.includes('failed to resolve') ||
+        s.includes('workspace:') ||
+        (s.includes('package.json') && (s.includes('missing') || s.includes('dependency')))
+    ) return 'PACKAGE_RESOLUTION';
+
+    // Build / compile errors
+    if (
+        s.includes('compilation failed') ||
+        s.includes('build failed') ||
+        s.includes('typescript error') ||
+        s.includes('ts error') ||
+        (s.includes('type error') && (s.includes('compile') || s.includes('build'))) ||
+        s.includes('webpack') ||
+        (s.includes('vite') && s.includes('error')) ||
+        s.includes('esbuild') ||
+        s.includes('tsconfig') ||
+        s.includes('cannot find name') ||
+        s.includes('property does not exist on type')
+    ) return 'BUILD_CONFIG';
+
+    // Runtime type errors (TypeError, undefined property access)
+    if (
+        s.includes('typeerror') ||
+        s.includes('is not a function') ||
+        s.includes('cannot read propert') ||
+        s.includes('is not defined') ||
+        s.includes('undefined is not') ||
+        s.includes('null is not')
+    ) return 'RUNTIME_TYPE';
+
+    return 'RUNTIME_LOGIC';
+}
+
+export function buildRouterPrompt(filePaths, userIntent, mode = 'debug') {
+    const modeInstructions = {
+        debug: `Select 5-10 files maximum. You are looking for the bug's root cause.
+Prioritize files that directly implement the feature mentioned in the symptom.
+Then include their direct dependencies (files they import).
+Skip: test files, config files (unless bug is config-related), documentation, assets.
+For dependency injection codebases (like VS Code): the concrete implementation file
+matters more than the interface file. Look for files named *Impl.ts, *Service.ts, *ServiceImpl.ts.`,
+
+        explain: `Select 15-25 files covering all major areas.
+Always include README.md, docs/, or any documentation files first.
+Include entry points, core modules, and representative files from each major folder.
+Include package.json. Do NOT try to find a bug — understand the whole system.`,
+
+        security: `Select 8-12 files focused on attack surface.
+Prioritize: entry points, auth middleware, input handlers, API routes, database query files,
+files touching user-supplied data, environment config. Include package.json.`
+    };
+
+    // Group file paths by directory for easier model reasoning
+    const grouped = {};
+    for (const p of filePaths) {
+        const parts = p.split('/');
+        const dir = parts.slice(0, -1).join('/') || '(root)';
+        if (!grouped[dir]) grouped[dir] = [];
+        grouped[dir].push(parts[parts.length - 1]);
+    }
+
+    // Build a tree-style string: show directories and their files
+    // Cap to 400 lines to avoid token overflow on massive repos
+    const treeLines = [];
+    let lineCount = 0;
+    for (const [dir, files] of Object.entries(grouped)) {
+        if (lineCount > 380) { treeLines.push('... (truncated)'); break; }
+        treeLines.push(`${dir}/`);
+        lineCount++;
+        for (const f of files) {
+            if (lineCount > 380) break;
+            treeLines.push(`  ${f}`);
+            lineCount++;
+        }
+    }
+
+    return `You are the Router Agent for the Unravel analysis engine.
+
+Your job: Analyze this repository's structure and the user's reported issue.
+Select the EXACT files needed to understand and diagnose the issue.
+
+MODE: ${mode.toUpperCase()}
+${modeInstructions[mode] || modeInstructions.debug}
+
+Universal rules:
+- Return FULL paths as they appear in the tree (e.g. "src/services/chatServiceImpl.ts")
+- Think about the dependency chain — if the bug is in A which calls B, include B
+- For large repos: the symptom description names the feature — find the implementation files for that feature
+- Prefer concrete implementation files over interfaces/types
+
+REPOSITORY FILE TREE:
+${treeLines.join('\n')}
+
+USER'S REPORTED ISSUE:
+${userIntent || 'No specific intent described.'}
+
+Return ONLY a JSON object: { "filesToRead": ["path/to/file1.ts", "path/to/file2.ts", ...], "reasoning": "one sentence explaining your selection" }`;
+}
+
+/**
+ * Second-pass router prompt — shown after initial files are fetched.
+ * The model has seen file summaries and can request additional specific files.
+ *
+ * @param {string[]} fetchedFileSummaries - Array of "filename: first 8 lines" strings
+ * @param {string[]} allFilePaths         - Full repo tree paths
+ * @param {string}   userIntent           - Original issue/symptom
+ * @param {string}   [errorType]          - From classifyErrorType() — drives discipline rules
+ * @returns {string} prompt
+ */
+export function buildSecondPassRouterPrompt(fetchedFileSummaries, allFilePaths, userIntent, errorType = 'RUNTIME_LOGIC') {
+    const summaryText = fetchedFileSummaries.join('\n\n');
+
+    // Build compact tree of remaining files (not already fetched)
+    const remaining = allFilePaths.slice(0, 300).join('\n');
+
+    // Error-type-specific discipline rules injected into the prompt
+    const errorTypeRules = {
+        PACKAGE_RESOLUTION: `
+ERROR TYPE: PACKAGE_RESOLUTION (Cannot find package / module not found)
+FILE SELECTION RULES FOR THIS ERROR TYPE:
+- ONLY request: package.json, pnpm-workspace.yaml, yarn.lock, .npmrc, tsconfig.json, workspace manifests
+- Do NOT request .ts / .js source implementation files — package resolution errors are NEVER fixed in source code
+- Do NOT request test files, UI files, or feature implementation files
+- If the issue involves a workspace dependency (like "workspace:*"), look for the workspace root package.json
+- If the needed config files are already in the initial set and the fix is clear, return empty additionalFiles`,
+
+        BUILD_CONFIG: `
+ERROR TYPE: BUILD_CONFIG (compilation / typescript / build tool error)
+FILE SELECTION RULES FOR THIS ERROR TYPE:
+- Prioritize: tsconfig.json, tsconfig.*.json, vite.config.ts, webpack.config.js, package.json
+- Include type definition files (.d.ts) if the error mentions a type that cannot be found
+- Include source files ONLY if the error cites a specific file path in its error message
+- Do NOT fetch source files based on feature name similarity alone`,
+
+        RUNTIME_TYPE: `
+ERROR TYPE: RUNTIME_TYPE (TypeError / undefined property access)
+FILE SELECTION RULES FOR THIS ERROR TYPE:
+- Request the file at the top of the stack trace first
+- Then request direct imports of that file
+- Skip config files, test files, and documentation`,
+
+        RUNTIME_LOGIC: `
+ERROR TYPE: RUNTIME_LOGIC (behavioral bug / incorrect output / crash)
+FILE SELECTION RULES FOR THIS ERROR TYPE:
+- Request missing implementation files that are called/imported by the already-fetched files
+- Dependency injection: prefer concrete implementation files (e.g. *ServiceImpl.ts, *Service.ts) over interfaces
+- Only request files with a traceable causal link to the bug — do NOT fetch files by filename similarity`,
+    };
+
+    const disciplineBlock = errorTypeRules[errorType] || errorTypeRules.RUNTIME_LOGIC;
+
+    return `You are the Router Agent for Unravel. You have already selected an initial set of files.
+After reviewing their content summaries, decide if any ADDITIONAL files are needed.
+${disciplineBlock}
+
+UNIVERSAL DISCIPLINE RULES (apply to all error types):
+1. RELEVANCE CHAIN: For each file you request, you must be able to state a direct causal chain
+   (import / call / dependency) connecting it to the error. "It might be related" is not acceptable.
+2. EMPTY IS VALID AND PREFERRED: If the initial files already make the root cause and fix clear,
+   return { "additionalFiles": [] }. Do not fetch files to be thorough.
+3. NEVER fetch a file just because it shares a keyword or filename fragment with the error.
+4. MAX 5 additional files. Quality over quantity.
+
+INITIAL FILES FETCHED — CONTENT SUMMARIES:
+${summaryText}
+
+REMAINING FILES IN REPO (available to fetch):
+${remaining}
+
+USER'S REPORTED ISSUE:
+${userIntent}
+
+If no additional files are needed, return: { "additionalFiles": [] }
+If additional files are needed, return: { "additionalFiles": ["path/to/file.ts", ...], "reasoning": "one sentence causal chain per file" }
+Return ONLY valid JSON.`;
+}
+
+// --- Engine Output Schema (for Gemini structured output) ---
+export const ENGINE_SCHEMA = {
+    type: "OBJECT",
+    properties: {
+        needsMoreInfo: { type: "BOOLEAN", description: "TRUE only if a critical file is missing and you cannot debug without it." },
+        missingFilesRequest: {
+            type: "OBJECT",
+            properties: {
+                filesNeeded: { type: "ARRAY", items: { type: "STRING" } },
+                reason: { type: "STRING" }
+            }
+        },
+        report: {
+            type: "OBJECT",
+            properties: {
+                bugType: { type: "STRING", description: "One of the BUG_TAXONOMY values — use closest match" },
+                secondaryTags: { type: "ARRAY", items: { type: "STRING" }, description: "Optional secondary classification tags for rare/complex bugs not fully captured by bugType (e.g. regex-catastrophic-backtracking, floating-point-precision, serialization-mismatch). Omit if bugType alone is sufficient." },
+                customLabel: { type: "STRING", description: "Optional short human label when none of the 12 taxonomy categories fit well. Only use if bugType=OTHER. Keep under 5 words." },
+                confidence: { type: "NUMBER", description: "0.85+ when you have code-level evidence for the root cause. Only below 0.75 if critical files are missing or two hypotheses survive with equal evidence." },
+                evidence: { type: "ARRAY", items: { type: "STRING" }, description: "Specific code locations and mechanisms that confirm the diagnosis — file + line for each" },
+                uncertainties: { type: "ARRAY", items: { type: "STRING" }, description: "SPECIFIC unknowns only — e.g. 'Cannot determine which branch executes at L42 without runtime trace'. Do NOT write generic disclaimers like without runtime logs. If code evidence is clear, leave this empty." },
+                symptom: { type: "STRING" },
+                reproduction: { type: "ARRAY", items: { type: "STRING" } },
+                rootCause: { type: "STRING" },
+                proximate_crash_site: { type: "STRING", description: "Where the failure became VISIBLE (crash site) — often different from rootCause. Format: 'functionName() L{n} — what went wrong here'. Omit if crash site and root cause are the same line." },
+                codeLocation: { type: "STRING" },
+                minimalFix: { type: "STRING" },
+                whyFixWorks: { type: "STRING" },
+                variableState: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: { variable: { type: "STRING" }, meaning: { type: "STRING" }, whereChanged: { type: "STRING" } }
+                    }
+                },
+                timeline: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: { time: { type: "STRING" }, event: { type: "STRING" } }
+                    }
+                },
+                invariants: { type: "ARRAY", items: { type: "STRING" } },
+                hypotheses: { type: "ARRAY", items: { type: "STRING" } },
+                conceptExtraction: {
+                    type: "OBJECT",
+                    properties: {
+                        bugCategory: { type: "STRING" },
+                        concept: { type: "STRING" },
+                        whyItMatters: { type: "STRING" },
+                        patternToAvoid: { type: "STRING" },
+                        realWorldAnalogy: { type: "STRING", description: "A relatable real-world analogy explaining the bug. Use analogies appropriate for the user's language setting: for hinglish/hindi users use Indian daily-life analogies (chai, auto-rickshaw, ghar, sabzi); for english users use universally understood analogies (traffic lights, library books, plumbing, construction)." }
+                    }
+                },
+                aiPrompt: { type: "STRING", description: "Prompt to paste into Cursor/Bolt to fix it safely." },
+                timelineEdges: {
+                    type: "ARRAY",
+                    description: "Execution timeline as directed edges for sequence diagram. Only populate if timeline section is requested.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            from: { type: "STRING", description: "Actor or component initiating the action" },
+                            to: { type: "STRING", description: "Actor or component receiving the action" },
+                            label: { type: "STRING", description: "What happens — keep under 8 words" },
+                            isBugPoint: { type: "BOOLEAN", description: "TRUE only for the exact edge where the bug manifests" }
+                        }
+                    }
+                },
+                hypothesisTree: {
+                    type: "ARRAY",
+                    description: "All hypotheses with elimination status. Only populate if hypotheses section is requested.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            id: { type: "STRING", description: "H1, H2, H3 etc" },
+                            text: { type: "STRING", description: "Short hypothesis statement under 10 words" },
+                            status: { type: "STRING", description: "survived | eliminated | UNVERIFIABLE (required evidence files not in context)" },
+                            reason: { type: "STRING", description: "One-line reason with file + line citation that eliminates or confirms this hypothesis" },
+                            eliminatedBy: { type: "STRING", description: "Short AST evidence string, e.g. 'app.js L42: scheduleUpdate() called after write'. Empty if status is survived." },
+                            falsifiableIf: { type: "ARRAY", items: { type: "STRING" }, description: "Conditions that, if true in code, make this hypothesis impossible." },
+                            eliminationQuality: { type: "STRING", description: "STRONG (≥2 distinct AST-verified facts) | WEAK (1 or inferred) | DEFAULT (survived by elimination only, no positive evidence)" }
+                        }
+                    }
+                },
+
+                variableStateEdges: {
+                    type: "ARRAY",
+                    description: "Variable mutation flow as edges. Only populate for variables with 5+ combined reads and writes. Only populate if variableState section is requested.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            variable: { type: "STRING" },
+                            edges: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        from: { type: "STRING", description: "declared / functionName" },
+                                        to: { type: "STRING", description: "functionName that reads or writes" },
+                                        label: { type: "STRING", description: "written L24 / read L87 / mutated L103" },
+                                        type: { type: "STRING", description: "write OR read OR mutate" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                diffBlock: {
+                    type: "STRING",
+                    description: "Minimal fix as unified diff format. Lines starting with - are removed, + are added. Include file:line header per changed location. Keep under 20 lines. Example: '--- app.js L69\n-    duration = remaining\n+    lastActiveRemaining = remaining'"
+                },
+                additionalRootCauses: {
+                    type: "ARRAY",
+                    description: "Populate ONLY when the symptom describes multiple INDEPENDENT failure modes — bugs that are causally independent: (1) different trigger condition, (2) different fix location (different file or different function), (3) different observable symptom. TEST: if fixing rootCause would also fix this, it is NOT an independent root cause — it is a secondary effect. A null dereference crash and the missing null guard that causes it are NOT two root causes. A Set.forEach double-count and a strict > off-by-one in a separate function ARE two root causes. Do NOT populate this with symptoms explained by the primary rootCause.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            id: { type: "STRING", description: "RC-2, RC-3, etc." },
+                            rootCause: { type: "STRING", description: "Independent root cause — different file/mechanism from the primary." },
+                            codeLocation: { type: "STRING", description: "File + line for this independent bug." },
+                            minimalFix: { type: "STRING", description: "Fix for this independent bug only." },
+                            diffBlock: { type: "STRING", description: "Unified diff for this independent bug." },
+                            confidence: { type: "NUMBER", description: "Confidence in this independent diagnosis." }
+                        }
+                    }
+                },
+                uncoveredSymptoms: {
+                    type: "ARRAY",
+                    items: { type: "STRING" },
+                    description: "Symptoms from the user's bug report that are NOT explained by rootCause or additionalRootCauses. Each entry is a quoted phrase from the symptom + a brief explanation of why it is unresolved. Leave empty if all symptoms are accounted for."
+                },
+                causalChain: {
+                    type: "ARRAY",
+                    description: "Ordered steps from root mutation to observed symptom. Each step must have code evidence — no inferred links.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            step: { type: "STRING", description: "e.g. 'pause() mutates duration at L69'" },
+                            evidence: { type: "STRING", description: "file + line supporting this step" },
+                            propagatesTo: { type: "STRING", description: "next function or variable in the chain" }
+                        }
+                    }
+                },
+                causalCompleteness: { type: "BOOLEAN",
+                    description: "true only if every link from root mutation to observed symptom has code evidence. false if any link is inferred without evidence." },
+                adversarialCheck: { type: "STRING",
+                    description: "What attack was attempted on the surviving hypothesis in Phase 5.5 and why it failed to eliminate it." },
+                multipleHypothesesSurvived: { type: "BOOLEAN",
+                    description: "true if 2 or more hypotheses passed all elimination and adversarial checks." },
+                wasReentered: { type: "BOOLEAN",
+                    description: "true if Phase 5.5 adversarial check eliminated a survivor and re-entered Phase 3.5 for an expanded analysis pass." },
+                evidenceMap: {
+                    type: "ARRAY",
+                    description: "Evidence triple for each hypothesis. Produced in Phase 4. Verdict must be SUPPORTED, CONTESTED, UNVERIFIABLE, or SPECULATIVE.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            hypothesisId: { type: "STRING" },
+                            supporting: { type: "ARRAY", items: { type: "STRING" }, description: "Code evidence making this hypothesis more likely (file + line)" },
+                            contradicting: { type: "ARRAY", items: { type: "STRING" }, description: "Code evidence arguing against this hypothesis" },
+                            missing: { type: "ARRAY", items: { type: "STRING" }, description: "Files or runtime data absent that would resolve this hypothesis" },
+                            verdict: { type: "STRING", description: "SUPPORTED | CONTESTED | UNVERIFIABLE | SPECULATIVE" }
+                        }
+                    }
+                },
+                fixInvariantViolations: {
+                    type: "ARRAY",
+                    items: { type: "STRING" },
+                    description: "Invariants from Phase 8 that the Phase 6 fix violates. Empty if all invariants satisfied."
+                },
+                relatedRisks: {
+                    type: "ARRAY",
+                    description: "Other locations in provided files where the same structural pattern from this bug appears. POTENTIAL RISK only — not confirmed bugs.",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            file: { type: "STRING" },
+                            line: { type: "NUMBER" },
+                            description: { type: "STRING" },
+                            patternMatch: { type: "STRING", description: "How this location matches the bug's structural pattern" }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    required: ["needsMoreInfo"]
+};
+
+// --- Schema Instruction (for Claude / OpenAI inline prompt injection) ---
+// This mirrors ENGINE_SCHEMA so that changes to one are reflected in both.
+// IMPORTANT: keep v2.0 fields (causalChain, evidenceMap, adversarialCheck, etc.) in sync
+// with ENGINE_SCHEMA. Gemini gets ENGINE_SCHEMA object directly (structured output);
+// Claude and OpenAI get this string injected into the prompt — they MUST see all fields.
+export const ENGINE_SCHEMA_INSTRUCTION = `\n\nReturn ONLY a raw JSON object (no markdown fences, no explanation outside JSON) matching this structure: { needsMoreInfo: boolean, missingFilesRequest?: { filesNeeded: string[], reason: string }, report?: { bugType, secondaryTags?: string[], customLabel?: string, confidence, evidence[], uncertainties[], symptom, reproduction[], rootCause, proximate_crash_site?: string, codeLocation, minimalFix, whyFixWorks, diffBlock?: string, variableState: [{variable, meaning, whereChanged}], timeline: [{time, event}], invariants[], hypotheses[], conceptExtraction: {bugCategory, concept, whyItMatters, patternToAvoid, realWorldAnalogy}, aiPrompt, timelineEdges: [{from, to, label, isBugPoint}], hypothesisTree: [{id, text, status, reason, eliminatedBy?, falsifiableIf?: string[], eliminationQuality: string}], variableStateEdges: [{variable, edges: [{from, to, label, type}]}], additionalRootCauses?: [{id, rootCause, codeLocation, minimalFix, diffBlock?, confidence}], uncoveredSymptoms?: string[], causalChain?: [{step, evidence, propagatesTo}], causalCompleteness?: boolean, adversarialCheck?: string, multipleHypothesesSurvived?: boolean, wasReentered?: boolean, evidenceMap?: [{hypothesisId, supporting: string[], contradicting: string[], missing: string[], verdict: string}], fixInvariantViolations?: string[], relatedRisks?: [{file, line, description, patternMatch}] } }\n\nIMPORTANT — Multi-Root-Cause: If the symptoms clearly describe MULTIPLE INDEPENDENT failure modes (different files, different mechanisms, different observable effects), populate additionalRootCauses[] with a separate entry for each independent bug. Use this ONLY for truly independent bugs, not for secondary effects of the same root cause. Populate uncoveredSymptoms[] with any symptom phrases you cannot explain — do not silently ignore them.\n\nIMPORTANT — v2.0 Fields: Always populate causalChain[] with ordered steps from root mutation to observed symptom (each step needs code evidence). Set causalCompleteness to true only if every link has code evidence. In adversarialCheck, describe the strongest attack on your hypothesis and why it failed. Set multipleHypothesesSurvived true if 2+ hypotheses passed all checks. Populate evidenceMap[] with a SUPPORTED/CONTESTED/UNVERIFIABLE/SPECULATIVE verdict for each hypothesis.`;
+
+// ═══════════════════════════════════════════════════
+// PHASE 4A: Mode-Specific Schemas
+// ═══════════════════════════════════════════════════
+
+// --- Explain Mode Schema ---
+export const EXPLAIN_SCHEMA = {
+    type: "OBJECT",
+    properties: {
+        summary: {
+            type: "STRING",
+            description: "A BIG multi-paragraph explanation. Paragraph 1: what does this project do in plain language. Paragraph 2: tech stack and project structure. Paragraph 3: step-by-step internal flow — how the code actually works from input to output, naming every phase/stage. Paragraph 4: what makes the architecture distinctive. Be thorough and detailed — minimum 4 paragraphs."
+        },
+        entryPoints: {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    name: { type: "STRING" },
+                    type: { type: "STRING", description: "component / function / endpoint / server / class" },
+                    file: { type: "STRING" },
+                    line: { type: "NUMBER" },
+                    description: { type: "STRING" }
+                }
+            }
+        },
+        dataFlow: {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    from: { type: "STRING" },
+                    to: { type: "STRING" },
+                    mechanism: { type: "STRING" },
+                    line: { type: "NUMBER" }
+                }
+            }
+        },
+        architectureLayers: {
+            type: "ARRAY",
+            description: "High-level semantic grouping of the codebase (e.g. UI Layer, Core Engine, Data Layer)",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    name: { type: "STRING" },
+                    description: { type: "STRING" },
+                    components: { type: "ARRAY", items: { type: "STRING" } }
+                }
+            }
+        },
+        componentMap: {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    name: { type: "STRING" },
+                    children: { type: "ARRAY", items: { type: "STRING" } },
+                    stateOwned: { type: "ARRAY", items: { type: "STRING" } }
+                }
+            }
+        },
+        keyPatterns: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+            description: "Each pattern must name specific mechanism and file. Bad: Modular Design. Good: Core engine (orchestrate.js, config.js) shared via direct relative imports — not npm package"
+        },
+        nonObviousInsights: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+            description: "Things that would genuinely surprise a developer reading this for the first time. Implicit assumptions, unusual patterns, hidden dependencies."
+        },
+        gotchas: {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    title: { type: "STRING" },
+                    description: { type: "STRING" },
+                    location: { type: "STRING", description: "file + line number" }
+                }
+            },
+            description: "Hidden coupling, shared mutable state, things that break silently when changed."
+        },
+        onboarding: {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    task: { type: "STRING", description: "e.g. Add a new AI provider" },
+                    whereToLook: { type: "STRING", description: "Exact file and line number" },
+                    patternToFollow: { type: "STRING", description: "Exact existing code to model after — cite file and line" }
+                }
+            },
+            description: "3-5 most common tasks a new developer would need to do. Be surgically specific."
+        },
+        architectureDecisions: {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    decision: { type: "STRING" },
+                    visibleReason: { type: "STRING", description: "Only what is visible in the code — no speculation" },
+                    tradeoff: { type: "STRING" }
+                }
+            }
+        },
+        flowchartEdges: {
+            type: "ARRAY",
+            description: "Data flow as directed edges for Mermaid flowchart",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    from: { type: "STRING" },
+                    to: { type: "STRING" },
+                    label: { type: "STRING", description: "Keep under 6 words" }
+                }
+            }
+        },
+        dependencyEdges: {
+            type: "ARRAY",
+            description: "File-level import dependencies as directed edges. Only EXPLICIT imports — never inferred.",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    file: { type: "STRING", description: "Short filename only e.g. App.jsx" },
+                    imports: { type: "ARRAY", items: { type: "STRING" }, description: "Short filenames only" }
+                }
+            }
+        }
+    },
+    required: ["summary", "entryPoints", "keyPatterns"]
+};
+
+export const EXPLAIN_SCHEMA_INSTRUCTION = `\n\nReturn ONLY a raw JSON object (no markdown fences) matching this structure: { summary: string, entryPoints: [{name, type, file, line, description}], dataFlow: [{from, to, mechanism, line}], architectureLayers: [{name, description, components[]}], componentMap: [{name, children[], stateOwned[]}], keyPatterns: string[], nonObviousInsights: string[], gotchas: [{title, description, location}], onboarding: [{task, whereToLook, patternToFollow}], architectureDecisions: [{decision, visibleReason, tradeoff}], flowchartEdges: [{from, to, label}], dependencyEdges: [{file, imports[]}] }`;
+
+// --- Security Mode Schema (BETA) ---
+export const SECURITY_SCHEMA = {
+    type: "OBJECT",
+    properties: {
+        vulnerabilities: {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    type: { type: "STRING" },
+                    severity: { type: "STRING", description: "Critical / High / Medium / Low / Informational" },
+                    exploitability: { type: "STRING", description: "TRIVIAL (script kiddie), MODERATE (skilled attacker), COMPLEX (expert + specific conditions), THEORETICAL (no practical attack vector found)" },
+                    confidence: { type: "NUMBER", description: "0.0 to 1.0" },
+                    cweId: { type: "STRING" },
+                    location: { type: "STRING", description: "file + line number" },
+                    description: { type: "STRING" },
+                    evidence: { type: "STRING", description: "exact code fragment" },
+                    remediation: { type: "STRING" },
+                    requiresHumanVerification: { type: "BOOLEAN" }
+                }
+            }
+        },
+        overallRisk: { type: "STRING", description: "Critical / High / Medium / Low / Secure" },
+        summary: { type: "STRING" },
+        positives: {
+            type: "ARRAY",
+            items: { type: "STRING" },
+            description: "Things the code does correctly from a security perspective"
+        },
+        attackVectorEdges: {
+            type: "ARRAY",
+            description: "Directed edges for Mermaid attack vector flowchart — shows HOW each vulnerability could be exploited step by step",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    from: { type: "STRING", description: "Attacker action or system component" },
+                    to: { type: "STRING", description: "Next step in the attack chain" },
+                    label: { type: "STRING", description: "Short description, max 6 words" },
+                    isExploitStep: { type: "BOOLEAN", description: "True if this is the critical exploitation moment" }
+                }
+            }
+        },
+        disclaimer: { type: "STRING" }
+    },
+    required: ["vulnerabilities", "disclaimer"]
+};
+
+export const SECURITY_SCHEMA_INSTRUCTION = `\n\nReturn ONLY a raw JSON object (no markdown fences) matching this structure: { vulnerabilities: [{type, severity, exploitability, confidence, cweId, location, description, evidence, remediation, requiresHumanVerification}], overallRisk: string, summary: string, positives: string[], attackVectorEdges: [{from, to, label, isExploitStep}], disclaimer: string }`;
+
+// ═══════════════════════════════════════════════════
+// PHASE 4A: Section Registry & Presets
+// ═══════════════════════════════════════════════════
+
+export const SECTION_REGISTRY = {
+    rootCause: { label: 'Root Cause', modes: ['debug'], defaultOn: true, tokenCost: 'low' },
+    minimalFix: { label: 'Minimal Fix', modes: ['debug'], defaultOn: true, tokenCost: 'low' },
+    aiPrompt: { label: 'AI Fix Prompt', modes: ['debug'], defaultOn: true, tokenCost: 'low' },
+    reproduction: { label: 'Reproduction Steps', modes: ['debug'], defaultOn: true, tokenCost: 'low' },
+    variableState: { label: 'Variable State Table', modes: ['debug'], defaultOn: false, tokenCost: 'medium' },
+    timeline: { label: 'Execution Timeline', modes: ['debug'], defaultOn: false, tokenCost: 'high' },
+
+    conceptExtraction: { label: 'Concept + Analogy', modes: ['debug'], defaultOn: false, tokenCost: 'medium' },
+    invariants: { label: 'Invariants', modes: ['debug'], defaultOn: false, tokenCost: 'low' },
+    hypotheses: { label: 'Hypotheses', modes: ['debug'], defaultOn: false, tokenCost: 'low' },
+    architecture: { label: 'Architecture + Flow', modes: ['explain'], defaultOn: true, tokenCost: 'high' },
+    vulnerabilities: { label: 'Vulnerability List', modes: ['security'], defaultOn: true, tokenCost: 'high' },
+    attackVectorFlowchart: { label: 'Attack Vector Flowchart', modes: ['security'], defaultOn: true, tokenCost: 'medium' },
+};
+
+export const PRESETS = {
+    quick: {
+        label: '⚡ Quick Fix',
+        sections: ['rootCause', 'minimalFix', 'aiPrompt'],
+        description: 'Root cause + fix only. Fastest. Hypothesis elimination always runs (baked into rootCause).',
+    },
+    developer: {
+        label: '👨‍💻 Developer',
+        sections: ['rootCause', 'minimalFix', 'aiPrompt', 'reproduction', 'variableState', 'timeline'],
+        description: 'Full technical breakdown. Hypothesis elimination always runs (baked into rootCause).',
+    },
+    full: {
+        label: '📖 Full Report',
+        sections: Object.keys(SECTION_REGISTRY),
+        description: 'Everything. Current default behavior.',
+    },
+    custom: {
+        label: '🔧 Custom',
+        sections: [],
+        description: 'You pick.',
+    },
+};
+
+// ═══════════════════════════════════════════════════
+// PHASE 4A: Dynamic Schema Builder
+// ═══════════════════════════════════════════════════
+
+// Maps section keys to the ENGINE_SCHEMA report properties they require
+// IMPORTANT: rootCause includes hypothesisTree and proximate_crash_site as ALWAYS-ON diagnostic fields.
+// These are NOT presentational — they are the anti-sycophancy enforcement mechanism.
+// Presets may only remove presentational sections (conceptExtraction, invariants, variableState, timeline).
+const SECTION_TO_SCHEMA_KEYS = {
+    rootCause: ['rootCause', 'codeLocation', 'bugType', 'confidence', 'evidence', 'uncertainties', 'hypotheses', 'hypothesisTree', 'proximate_crash_site', 'additionalRootCauses', 'uncoveredSymptoms'],
+    minimalFix: ['minimalFix', 'whyFixWorks', 'diffBlock'],
+    aiPrompt: ['aiPrompt'],
+    reproduction: ['symptom', 'reproduction'],
+    variableState: ['variableState', 'variableStateEdges'],
+    timeline: ['timeline', 'timelineEdges'],
+
+    conceptExtraction: ['conceptExtraction'],
+    invariants: ['invariants'],
+    hypotheses: [], // now embedded in rootCause — kept for backward-compat but produces no additional fields
+};
+
+// Build a subset of ENGINE_SCHEMA for Gemini structured output
+export function buildDynamicSchema(sections) {
+    const requestedKeys = new Set();
+    for (const section of sections) {
+        const keys = SECTION_TO_SCHEMA_KEYS[section] || [];
+        keys.forEach(k => requestedKeys.add(k));
+    }
+
+    // Build subset of report properties
+    const reportProps = {};
+    for (const key of requestedKeys) {
+        if (ENGINE_SCHEMA.properties.report?.properties[key]) {
+            reportProps[key] = ENGINE_SCHEMA.properties.report.properties[key];
+        }
+    }
+
+    return {
+        type: "OBJECT",
+        properties: {
+            needsMoreInfo: ENGINE_SCHEMA.properties.needsMoreInfo,
+            missingFilesRequest: ENGINE_SCHEMA.properties.missingFilesRequest,
+            report: { type: "OBJECT", properties: reportProps }
+        },
+        required: ["needsMoreInfo"]
+    };
+}
+
+// Build a subset schema instruction for Claude/OpenAI inline prompts
+export function buildDynamicSchemaInstruction(sections) {
+    const sectionToFields = {
+        // rootCause always includes hypothesisTree + proximate_crash_site — these are diagnostic core, not optional
+        rootCause: 'rootCause, codeLocation, bugType, confidence, evidence[], uncertainties[], hypotheses[], hypothesisTree: [{id, text, status, reason, eliminatedBy?: string}], proximate_crash_site?: string, additionalRootCauses?: [{id, rootCause, codeLocation, minimalFix, diffBlock?, confidence}], uncoveredSymptoms?: string[]',
+        minimalFix: 'minimalFix, whyFixWorks, diffBlock?: string',
+        aiPrompt: 'aiPrompt',
+        reproduction: 'symptom, reproduction[]',
+        variableState: 'variableState: [{variable, meaning, whereChanged}], variableStateEdges: [{variable, edges: [{from, to, label, type}]}]',
+        timeline: 'timeline: [{time, event}], timelineEdges: [{from, to, label, isBugPoint}]',
+
+        conceptExtraction: 'conceptExtraction: {bugCategory, concept, whyItMatters, patternToAvoid, realWorldAnalogy}',
+        invariants: 'invariants[]',
+        hypotheses: '', // now embedded in rootCause — kept for backward-compat, emits nothing extra
+    };
+
+    const fields = sections.map(s => sectionToFields[s]).filter(Boolean).join(', ');
+    return `\n\nReturn ONLY a raw JSON object (no markdown fences) with these fields: { needsMoreInfo: boolean, missingFilesRequest?: {filesNeeded[], reason}, report?: { ${fields} } }`;
+}
+
+// ═══════════════════════════════════════════════════
+// LAYER_BOUNDARY — Solvability verdict schema
+// Returned by orchestrate when the root cause is
+// upstream of all provided files and the bug cannot
+// be fixed from within this codebase.
+// ═══════════════════════════════════════════════════
+
+export const LAYER_BOUNDARY_VERDICT = 'LAYER_BOUNDARY';
+export const EXTERNAL_FIX_TARGET_VERDICT = 'EXTERNAL_FIX_TARGET';
+
+/**
+ * Shape returned by orchestrate() when checkSolvability() fires.
+ * App.jsx checks: if (result.verdict === LAYER_BOUNDARY_VERDICT)
+ *
+ * schemaVersion lets consumers gracefully handle future field additions.
+ * Bump the minor version when adding optional fields.
+ * Bump the major version when removing or renaming required fields.
+ *
+ * @typedef {Object} LayerBoundaryResult
+ * @property {'LAYER_BOUNDARY'} verdict
+ * @property {'1.0'} schemaVersion
+ * @property {number}  confidence        - 0–1
+ * @property {string}  rootCauseLayer    - human-readable layer name
+ * @property {string}  reason            - why it cannot be fixed here
+ * @property {string}  suggestedFixLayer - where the fix should actually go
+ * @property {string}  message           - short user-facing summary
+ * @property {string}  [symptom]         - echoed from original result if available
+ * @property {string}  [_mode]           - echoed from orchestrate options
+ * @property {Object}  [_provenance]     - echoed from orchestrate provenance
+ */
+export const LAYER_BOUNDARY_SCHEMA = {
+    schemaVersion:    '1.0',
+    verdict:          LAYER_BOUNDARY_VERDICT,
+    confidence:       0,
+    rootCauseLayer:   '',
+    reason:           '',
+    suggestedFixLayer:'',
+    message:          '',
+};
+
+/**
+ * Shape returned by orchestrate() when verifyClaims detects a cross-repo reference.
+ * App.jsx checks: if (result.verdict === EXTERNAL_FIX_TARGET_VERDICT)
+ *
+ * @typedef {Object} ExternalFixTargetResult
+ * @property {'EXTERNAL_FIX_TARGET'} verdict
+ * @property {'1.0'} schemaVersion
+ * @property {string}  targetRepository  - package/repo name where fix must be applied
+ * @property {string}  targetFile        - specific file within that repo
+ * @property {Object}  diagnosis         - full LLM analysis result, preserved
+ * @property {number}  confidence        - 0–1, from original diagnosis
+ * @property {string}  reason            - why the fix is external
+ * @property {string}  suggestedAction   - human-readable next step
+ * @property {string}  [symptom]         - echoed from original result
+ * @property {string}  [_mode]           - echoed from orchestrate options
+ * @property {Object}  [_provenance]     - echoed from orchestrate provenance
+ */
+export const EXTERNAL_FIX_TARGET_SCHEMA = {
+    schemaVersion:     '1.0',
+    verdict:           EXTERNAL_FIX_TARGET_VERDICT,
+    targetRepository:  '',
+    targetFile:        '',
+    diagnosis:         null,
+    confidence:        0,
+    reason:            '',
+    suggestedAction:   '',
+};
+
+export function estimateRuntime(fileCount, totalLines, provider, preset, inputType, mode) {
+    let base = 0; // base seconds
+
+    // Base cost for the entry path
+    if (inputType === 'github') {
+        base += 45; // Router passes + github API fetch + AST
+    } else {
+        base += 15; // Local AST processing
+    }
+
+    // File processing cost
+    base += Math.min(fileCount * 4, 45);     // +4s per file, cap 45s
+    base += Math.min(totalLines / 150, 30);  // +1s per 150 lines, cap 30s
+
+    const presetMul = { quick: 0.6, developer: 0.85, full: 1.0, custom: 0.9 };
+    const providerMul = { google: 0.7, anthropic: 1.0, openai: 1.1 };
+    const modeMul = { debug: 1.0, explain: 0.85, security: 1.15 };
+
+    base *= (presetMul[preset] || 1.0) * (providerMul[provider] || 1.0) * (modeMul[mode] || 1.0);
+    
+    const minSec = Math.round(base * 0.75);
+    const maxSec = Math.round(base * 1.4);
+
+    if (maxSec < 60) {
+        return `~${minSec}–${maxSec} sec`;
+    } else {
+        const minMin = Math.floor(minSec / 60);
+        const maxMin = Math.ceil(maxSec / 60);
+        if (minMin === maxMin) return `~${minMin} min`;
+        return `~${minMin}–${maxMin} min`;
+    }
+}
+

@@ -1,0 +1,19 @@
+{
+  "builtAt": "2026-05-01T07:20:45.633Z",
+  "nodeCount": 406,
+  "edgeCount": 590,
+  "callEdges": 176,
+  "filesIndexed": 41,
+  "mode": "structural",
+  "incremental": false,
+  "schemaVersion": 1,
+  "engineVersion": "unravel-mcp-kg-v1",
+  "embeddingProvider": {
+    "provider": "gemini",
+    "model": "gemini-embedding-2-preview",
+    "semanticSearch": true,
+    "visualSearch": true,
+    "requiresApiKey": true,
+    "status": "active"
+  }
+}

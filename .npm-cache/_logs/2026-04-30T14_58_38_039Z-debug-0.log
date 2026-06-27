@@ -1,0 +1,63 @@
+0 verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@10.9.2
+2 info using node@v22.17.1
+3 silly config load:file:C:\Program Files\nodejs\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\mukti\Desktop\UnravelAI\unravel-mcp\.npmrc
+5 silly config load:file:C:\Users\mukti\.npmrc
+6 silly config load:file:C:\Users\mukti\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm pack
+8 verbose argv "pack" "--dry-run" "--cache" ".npm-cache"
+9 verbose logfile logs-max:10 dir:C:\Users\mukti\Desktop\UnravelAI\unravel-mcp\.npm-cache\_logs\2026-04-30T14_58_38_039Z-
+10 verbose logfile C:\Users\mukti\Desktop\UnravelAI\unravel-mcp\.npm-cache\_logs\2026-04-30T14_58_38_039Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:2197815296 maxSize:549453824 maxEntrySize:274726912
+13 verbose shrinkwrap failed to load node_modules/.package-lock.json missing from node_modules: ../cognium/circle-ir
+14 http fetch GET https://registry.npmjs.org/npm attempt 1 failed with EACCES
+15 notice
+16 notice package: unravel-mcp@3.5.0
+17 notice Tarball Contents
+18 notice 15.9kB README.md
+18 notice 7.3kB circle-ir-adapter.js
+18 notice 19.1kB cli.js
+18 notice 17.0kB core/ast-bridge-browser.js
+18 notice 11.5kB core/ast-bridge.js
+18 notice 175.4kB core/ast-engine-ts.js
+18 notice 34.9kB core/ast-project.js
+18 notice 83.2kB core/config.js
+18 notice 22.9kB core/embedding-browser.js
+18 notice 7.7kB core/graph-builder.js
+18 notice 7.8kB core/graph-storage-idb.js
+18 notice 8.6kB core/graph-storage.js
+18 notice 1.7kB core/index.js
+18 notice 14.2kB core/indexer.js
+18 notice 7.4kB core/layer-detector.js
+18 notice 6.5kB core/llm-analyzer.js
+18 notice 122.0kB core/orchestrate.js
+18 notice 9.8kB core/parse-json.js
+18 notice 26.6kB core/pattern-store.js
+18 notice 9.4kB core/provider.js
+18 notice 9.4kB core/search.js
+18 notice 65.6kB core/sidebar-ref.js
+18 notice 27.8kB embedding.js
+18 notice 126.1kB index.js
+18 notice 1.1kB package.json
+18 notice 16.5kB server/codex.js
+18 notice 34.9kB server/consult-format.js
+18 notice 3.2kB server/file-reader.js
+18 notice 11.6kB server/project-overview.js
+19 notice Tarball Details
+20 notice name: unravel-mcp
+21 notice version: 3.5.0
+22 notice filename: unravel-mcp-3.5.0.tgz
+23 notice package size: 229.2 kB
+24 notice unpacked size: 905.2 kB
+25 notice shasum: 75144dc10c3931d5884a329e92638f631d3e76bd
+26 notice integrity: sha512-YrFNAqlrEGw+Q[...]zkKXDM9FgoJwg==
+27 notice total files: 29
+28 notice
+29 verbose cwd C:\Users\mukti\Desktop\UnravelAI\unravel-mcp
+30 verbose os Windows_NT 10.0.26200
+31 verbose node v22.17.1
+32 verbose npm  v10.9.2
+33 verbose exit 0
+34 info ok
