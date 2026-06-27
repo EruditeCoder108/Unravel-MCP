@@ -1,0 +1,277 @@
+<svg width="1200" height="400" viewBox="0 0 1200 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@200;800&amp;family=JetBrains+Mono:wght@400&amp;display=swap');
+
+      .bg { fill: #030303; }
+      
+      .grid { 
+        stroke: #ffffff; 
+        stroke-width: 0.5; 
+        opacity: 0.06; 
+      }
+
+      .tech-element {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        fill: #38bdf8;
+        opacity: 0.15;
+      }
+
+      .crosshair {
+        stroke: #ffffff;
+        stroke-width: 0.8;
+        opacity: 0.2;
+      }
+
+      /* KNOT ANIMATIONS FROM REFERENCE */
+      .knot-path {
+        stroke-dasharray: 1000;
+        stroke-dashoffset: 1000;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        animation: drawKnot 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+      
+      .kp-1 { animation-delay: 0.1s; }
+      .kp-2 { animation-delay: 0.3s; }
+      .kp-3 { animation-delay: 0.5s; }
+      .kp-4 { animation-delay: 0.7s; }
+      .kp-5 { animation-delay: 0.9s; }
+
+      @keyframes drawKnot {
+        to { stroke-dashoffset: 0; }
+      }
+
+      @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-4px); }
+      }
+
+      @keyframes floatParallax {
+        0%, 100% { transform: translate(0, 0); }
+        50% { transform: translate(2px, -6px); }
+      }
+
+      .float-base { animation: float 6s ease-in-out infinite; }
+      .float-front { animation: floatParallax 6s ease-in-out infinite; }
+
+      /* EXISTING BRAND STYLES */
+      .logo-line-weaving {
+        fill: none;
+        stroke: url(#brandGradient);
+        stroke-width: 9;
+        stroke-linecap: round;
+        filter: url(#brandGlow);
+        stroke-dasharray: 2000;
+        stroke-dashoffset: 2000;
+        animation: drawLine 3.5s cubic-bezier(0.1, 0, 0, 1) 1.2s forwards;
+      }
+
+      @keyframes drawLine {
+        to { stroke-dashoffset: 0; }
+      }
+
+      .letter {
+        font-family: 'Outfit', sans-serif;
+        font-weight: 800;
+        font-size: 156px;
+        fill: #ffffff;
+      }
+
+      .letter-gradient {
+        fill: url(#textGradient);
+      }
+
+      .subtitle {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        fill: #94a3b8;
+        letter-spacing: 12px;
+        text-transform: uppercase;
+        opacity: 0.6;
+      }
+
+      .tag-pill {
+        fill: #1e293b;
+        stroke: #334155;
+        stroke-width: 1;
+      }
+
+      .tag-text {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        fill: #38bdf8;
+        font-weight: 900;
+      }
+
+      .node-end {
+        fill: #06b6d4;
+        filter: url(#nodeGlow);
+        opacity: 0;
+        animation: showNode 0.4s ease-out 3.0s forwards;
+      }
+
+      @keyframes showNode {
+        to { opacity: 1; }
+      }
+
+      .mask-cutout {
+        stroke: #030303;
+        stroke-width: 16;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+    </style>
+
+    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7e22ce" />
+      <stop offset="30%" stop-color="#6366f1" />
+      <stop offset="70%" stop-color="#0891b2" />
+      <stop offset="100%" stop-color="#22d3ee" />
+    </linearGradient>
+
+    <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#64748b" />
+    </linearGradient>
+
+    <radialGradient id="mainGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <filter id="brandGlow" x="-100%" y="-1500%" width="300%" height="3100%" filterUnits="objectBoundingBox">
+      <feGaussianBlur stdDeviation="15" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="whiteGlow" x="-200%" y="-2000%" width="500%" height="4100%" filterUnits="objectBoundingBox">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="nodeGlow" x="-500%" y="-500%" width="1100%" height="1100%" filterUnits="objectBoundingBox">
+      <feGaussianBlur stdDeviation="28" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background Layer -->
+  <rect width="1200" height="400" class="bg" />
+  
+  <!-- Substantial Background Light -->
+  <circle cx="500" cy="200" r="500" fill="url(#mainGlow)" />
+
+  <!-- Technical Grid -->
+  <g class="grid">
+    <line x1="0" y1="50" x2="1200" y2="50" />
+    <line x1="0" y1="100" x2="1200" y2="100" />
+    <line x1="0" y1="150" x2="1200" y2="150" />
+    <line x1="0" y1="200" x2="1200" y2="200" />
+    <line x1="0" y1="250" x2="1200" y2="250" />
+    <line x1="0" y1="300" x2="1200" y2="300" />
+    <line x1="0" y1="350" x2="1200" y2="350" />
+    <line x1="100" y1="0" x2="100" y2="400" />
+    <line x1="200" y1="0" x2="100" y2="400" />
+    <line x1="300" y1="0" x2="300" y2="400" />
+    <line x1="400" y1="0" x2="400" y2="400" />
+    <line x1="500" y1="0" x2="500" y2="400" />
+    <line x1="600" y1="0" x2="600" y2="400" />
+    <line x1="700" y1="0" x2="700" y2="400" />
+    <line x1="800" y1="0" x2="800" y2="400" />
+    <line x1="900" y1="0" x2="900" y2="400" />
+    <line x1="1000" y1="0" x2="1000" y2="400" />
+    <line x1="1100" y1="0" x2="1100" y2="400" />
+  </g>
+
+  <!-- Tech Elements -->
+  <g class="tech-element">
+    <text x="30" y="30">FAST_INVERSE_SQRT_0x5F3759DF</text>
+    <text x="1050" y="380">AST_RESOLVER_V3</text>
+    <text x="30" y="380">MUTATION_TRACE_ENGINE_ENABLED</text>
+    <text x="1080" y="30">BUILD_2026.03.15</text>
+    <text x="50" y="150" opacity="0.6">_STATIC_ANALYSIS</text>
+    <text x="1080" y="250" opacity="0.6">_ROOT_CAUSE</text>
+  </g>
+
+  <!-- Crosshairs -->
+  <g class="crosshair">
+    <path d="M40 40 L40 60 M30 50 L50 50" />
+    <path d="M1160 40 L1160 60 M1150 50 L1170 50" />
+    <path d="M40 340 L40 360 M30 350 L50 350" />
+    <path d="M1160 340 L1160 360 M1150 350 L1170 350" />
+  </g>
+
+  <!-- Main Composition -->
+  <g transform="translate(600, 200)">
+    
+    <!-- Under-layers for Weaving (Letters behind the path) -->
+    <text x="-375" y="30" class="letter">U</text>
+    <text x="-115" y="30" class="letter letter-gradient">R</text>
+    <text x="110" y="30" class="letter letter-gradient">V</text>
+    <text x="345" y="30" class="letter letter-gradient">L</text>
+
+    <!-- UNRAVELLING LINE (Woven Through) -->
+    <path class="logo-line-weaving" d="M -540, -30 C -300, -30 -150, 0 100, 0 L 520, 0" />
+
+    <!-- Over-layers for Weaving (Letters in front of the path) -->
+    <text x="-250" y="30" class="letter">N</text>
+    <text x="5" y="30" class="letter letter-gradient">A</text>
+    <text x="215" y="30" class="letter letter-gradient">E</text>
+    
+    <!-- Terminal Node -->
+    <circle cx="520" cy="0" r="20" class="node-end" />
+
+    <!-- ENHANCED ENERGETIC KNOT - SHIFTED SLIGHTLY RIGHT (-710 from -750) -->
+    <g transform="translate(-720, -215) scale(1.1)">
+      <!-- Knot Group Base -->
+      <g class="float-base">
+        <!-- Layer 1: Back Knot (with mask cutout) -->
+        <g stroke-opacity="0.9">
+          <path d="M130,180 L160,130 L210,150 L240,100 L290,140 L260,190" class="knot-path kp-1 mask-cutout" />
+          <path d="M120,210 L150,250 L200,220 L230,270 L280,230 L300,180 L280,140" class="knot-path kp-2 mask-cutout" />
+          <path d="M150,150 L180,190 L160,230 L210,250 L250,210 L300,240" class="knot-path kp-3 mask-cutout" />
+          
+          <path d="M130,180 L160,130 L210,150 L240,100 L290,140 L260,190" class="knot-path kp-1" fill="none" stroke="#f8fafc" stroke-width="4.5" filter="url(#whiteGlow)" />
+          <path d="M120,210 L150,250 L200,220 L230,270 L280,230 L300,180 L280,140" class="knot-path kp-2" fill="none" stroke="#f8fafc" stroke-width="4.5" filter="url(#whiteGlow)" />
+          <path d="M150,150 L180,190 L160,230 L210,250 L250,210 L300,240" class="knot-path kp-3" fill="none" stroke="#f8fafc" stroke-width="4.5" filter="url(#whiteGlow)" />
+        </g>
+      </g>
+
+      <!-- Layer 3: Front Knot (Parallax) -->
+      <g class="float-front">
+        <g stroke-opacity="0.9">
+          <path d="M160,200 L200,160 L250,190 L280,150 L310,200 L270,240 L230,200" class="knot-path kp-4 mask-cutout" />
+          <path d="M180,240 L220,200 L270,250 L300,210 L250,170 L210,120 L170,160" class="knot-path kp-5 mask-cutout" />
+          
+          <path d="M160,200 L200,160 L250,190 L280,150 L310,200 L270,240 L230,200" class="knot-path kp-4" fill="none" stroke="#f8fafc" stroke-width="4.5" filter="url(#whiteGlow)" />
+          <path d="M180,240 L220,200 L270,250 L300,210 L250,170 L210,120 L170,160" class="knot-path kp-5" fill="none" stroke="#f8fafc" stroke-width="4.5" filter="url(#whiteGlow)" />
+        </g>
+      </g>
+      
+      <!-- Seed Light -->
+      <circle cx="210" cy="185" r="5" fill="#ffffff" filter="url(#whiteGlow)" />
+    </g>
+
+    <!-- Subtitle -->
+    <text x="0" y="115" class="subtitle" text-anchor="middle">THE AST-ENHANCED AI DEBUGGING ENGINE</text>
+
+    <!-- Version Badge -->
+    <g transform="translate(-110, 150)">
+      <rect width="220" height="30" rx="15" class="tag-pill" />
+      <text x="110" y="20" class="tag-text" text-anchor="middle">STABLE RELEASE V3.3.4</text>
+    </g>
+  </g>
+
+</svg>
